@@ -1,137 +1,11 @@
+const puppeteer = require('puppeteer');
+const axios = require('axios');
 const fs = require('fs');
-const path = require('path');
-const cloudscraper = require('cloudscraper');
-const request = require('request');
 const chalk = require('chalk');
-const readline = require('readline');
+const { URL } = require('url');
 
-// Memuat konfigurasi
-const userAgentFilePath = path.join(__dirname, 'ua.txt');
-const proxyFilePath = path.join(__dirname, 'proxy.txt');
-
-const userAgents = fs.readFileSync(userAgentFilePath, 'utf8').split('\n').filter(Boolean);
-const proxies = fs.readFileSync(proxyFilePath, 'utf8').split('\n').filter(Boolean);
-
-// Setup readline
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
-
-// Fungsi untuk mendapatkan informasi IP tanpa API Key
-function getIPInfo(target, callback) {
-    const ipinfoUrl = `https://ipinfo.io/${target}/json`;
-
-    request.get({
-        url: ipinfoUrl,
-        timeout: 10000 // Timeout untuk permintaan
-    }, (error, response, body) => {
-        if (error) {
-            console.error("Error fetching IP info:", error);
-            callback(error, null);
-            return;
-        }
-
-        try {
-            const data = JSON.parse(body);
-            callback(null, data);
-        } catch (e) {
-            console.error("Error parsing IP info response:", e);
-            callback(e, null);
-        }
-    });
-}
-
-// Fungsi untuk melakukan bypass
-function bypass(target, proxy, userAgent, callback) {
-    cloudscraper.get({
-        url: target,
-        proxy: `http://${proxy}`,
-        headers: {
-            'User-Agent': userAgent,
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'en-US;q=0.9'
-        },
-        timeout: 10000 // Timeout untuk permintaan
-    }, (err, res, body) => {
-        if (err || res.statusCode !== 200) {
-            console.warn("Failed to bypass, retrying...");
-            // Menambahkan retry jika gagal
-            return setTimeout(() => bypass(target, proxy, userAgent, callback), 5000);
-        }
-
-        // Logging and calling the callback with the result
-        console.log("Bypassed successfully:", res.statusCode);
-        callback(null, body);
-    });
-}
-
-// Fungsi utama
-function main() {
-    rl.question('Enter target URL: ', (targetUrl) => {
-        rl.question('Enter port: ', (port) => {
-            rl.question('Enter duration: ', (duration) => {
-                rl.question('Enter proxy file path: ', (proxyFile) => {
-                    if (!fs.existsSync(proxyFile)) {
-                        console.error('Proxy file not found.');
-                        rl.close();
-                        process.exit(1);
-                    }
-                    rl.question('Enter captcha mode (normal/captcha): ', (captchaMode) => {
-                        rl.question('Enter username: ', (username) => {
-                            rl.question('Enter password: ', (password) => {
-                                if (proxies.length < 1) {
-                                    console.error("Proxy file is empty.");
-                                    rl.close();
-                                    process.exit(1);
-                                }
-                                const proxy = proxies[Math.floor(Math.random() * proxies.length)];
-                                const userAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
-
-                                console.log(chalk.green('Starting script...'));
-                                showBanner();
-
-                                bypass(targetUrl, proxy, userAgent, (err, result) => {
-                                    if (err) {
-                                        console.error('Error during bypass:', err);
-                                        rl.close();
-                                        return;
-                                    }
-
-                                    console.log('Bypass Result:', result);
-
-                                    getIPInfo(targetUrl, (err, ipInfo) => {
-                                        if (err) {
-                                            console.error('Error fetching IP info:', err);
-                                            rl.close();
-                                            return;
-                                        }
-
-                                        console.log('IP Info:');
-                                        console.log(`IP: ${ipInfo.ip}`);
-                                        console.log(`Hostname: ${ipInfo.hostname}`);
-                                        console.log(`City: ${ipInfo.city}`);
-                                        console.log(`Region: ${ipInfo.region}`);
-                                        console.log(`Country: ${ipInfo.country}`);
-                                        console.log(`Location: ${ipInfo.loc}`); // Latitude and Longitude
-                                        console.log(`Organization: ${ipInfo.org}`);
-                                        console.log(`ASN: ${ipInfo.asn}`);
-                                        rl.close();
-                                    });
-                                });
-                            });
-                        });
-                    });
-                });
-            });
-        });
-    });
-}
-
-// Menampilkan banner
-function showBanner() {
-    console.log(chalk.green(`
+// Banner dengan warna
+console.log(chalk.green(`
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 @@@@@@@@@@@@@@@#%%%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -152,18 +26,110 @@ function showBanner() {
 @@@@@%%%@@@@@@@@@@%%@@##%@%%#%%@@@@@%@@%@@@@@@@@@%@%%@@@**+*#@*%*++#%@#++#*+*#@@@@@@@@@@@@@@@@@@@@@@@@@
 @@@@@@%%@@@@@@@@@@@%%%%%%@@%%%%@@@@@@@@@@@@@@@@@%%%#%@@@%#%#%@%%###%%@%##%###%@@@@@@@@@@@@@@@@@@@@@@@@@
 @@@@@@##@@@@@@@@@@@#%@%@@@@@#%#@@@@@@@@@@@@@@@%@%%#%@@@@**++#%@@@@@@@@@***#+%@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@#%@@@@@@@@@@%#%%@@@@@@@@@@@@@@@@@@@@%%%###%%%%#%**===+++*%@@@@@@+***=%@@@@@@@@@@@@@@@@@@@@@@@@@@
 @@@@@@@%#@@@@@@@@@@@%#%%%%@@@@@@@%%%@@@@@@@@@@@@%%%##%@#%#%#%###%@@@@@%######%@%#%@%%%%%#@@@@@%@@@%@@%@
-@@@@@@@@*%%@@@@@@@@@@%%#%#%%#%#%%%%%@@@@@@@@@@@@@@%%%##%**+*#*+#*%@@@@%*+**=**%#**@#+*##*+=+*+=+*#*@
+@@@@@@@@*%%@@@@@@@@@@%%#%#%%#%#%%%%%@@@@@@@@@@@@@@%%%##%**+*#*+#*%@@@@%*+**=**%#**@#+*##*+=****+=+**#*@
 @@@@@@@@@%%%%@@@@@@@@@@@@%%%%@@@@@@@@@%%%%@@@@@@@@@%%%%@##*####*#*##*###%%#*%@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@%#%@%@@@@@%@*%#%%%%#%%%%%##@@@@@@@@@%@%@@%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@%%%%%@@@%@@@@@@@@@@@%@%@%@%@%@%@@@@%@@#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@#%#%@@@@@@@@@@@@@@@%@@@%@@@@@@@@@@@%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-@@@@@@@@@@@@@@@@@@@@@@@%%%%%%@@@@@%@@@%@%%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@%###%@@@@@@@@@@@@%@*%#%%%%#%%%%%##@@@@@@@@@%%%#%##*#*#*+*+***#%*%@#*%@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@%%%%%%%%%%##%%@@@@@@@@@@@@@@@#%@@@@@@@@@%@%%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@%%#%%%@@@@@@@@@@@@@@%@%%%%@@@%@@@@@@@@@#@@%%%##%%#%%%#%%%%%#%%%#####%#%%#@@%@@@@@@@@
+@@@@@@@@@@@@@@@@@@@%##%@@@@@@@@@@@@@%@#@@@@@@@@@@@@@@@@@@@#@@%%%##%%#%%%#%%%%%#%%%#####%#%%#@@%@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@%%#%#%%#%##@@@@@%%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@%#%#@%#@@#%@@@%%%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@%%%%%%@@@@#%@%%%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@%@@@@@@%%%%%@@@@%%##%@@@@@@@@@%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@%%@@@@@@%@%@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 `));
+
+// Fungsi untuk memuat user agents dari file
+function loadUserAgents() {
+    const userAgents = fs.readFileSync('ua.txt', 'utf-8').trim().split('\n');
+    return userAgents;
 }
 
-// Menjalankan fungsi utama
+// Fungsi untuk memuat kredensial dari file
+function loadCredentials() {
+    const credentials = fs.readFileSync('user.txt', 'utf-8').trim().split('\n');
+    return {
+        username: credentials[0],
+        password: credentials[1]
+    };
+}
+
+// Fungsi untuk mendapatkan informasi target
+async function getTargetInfo(target) {
+    try {
+        const response = await axios.get(`https://ipinfo.io/${target}/json?token=9f24079c888c4a378665605084beda0c`);
+        return response.data;
+    } catch (error) {
+        console.error(chalk.red('Failed to retrieve target information.'), error);
+        return null;
+    }
+}
+
+// Fungsi untuk bypass captcha dengan Puppeteer
+async function bypassCaptcha(url) {
+    try {
+        const browser = await puppeteer.launch({ headless: false });
+        const page = await browser.newPage();
+        
+        // Mengatur user agent dan header
+        const userAgents = loadUserAgents();
+        const randomUserAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
+        await page.setUserAgent(randomUserAgent);
+
+        await page.goto(url, { waitUntil: 'networkidle2' });
+
+        // Tunggu sampai elemen captcha muncul dan coba untuk menyelesaikannya secara manual
+        console.log(chalk.yellow('Manual captcha solving required.'));
+
+        // Tunggu input manual, jika captcha terpecahkan, ambil cookies atau token yang diperlukan
+        await page.waitForTimeout(60000); // Tunggu 60 detik untuk captcha diselesaikan
+
+        const cookies = await page.cookies();
+        await browser.close();
+        return cookies;
+    } catch (error) {
+        console.error(chalk.red('Failed to bypass captcha.'), error);
+        return null;
+    }
+}
+
+// Fungsi utama untuk memeriksa akses dan menampilkan informasi target
+async function main() {
+    const args = process.argv.slice(2);
+    if (args.length < 1) {
+        console.log(chalk.red('Usage: node script.js <target-url>'));
+        return;
+    }
+
+    const targetUrl = args[0];
+    const { username, password } = loadCredentials();
+
+    console.log(chalk.green(`Username: ${username}`));
+    console.log(chalk.green(`Password: ${password}`));
+
+    // Menampilkan informasi target
+    const targetInfo = await getTargetInfo(new URL(targetUrl).hostname);
+    if (targetInfo) {
+        console.log(chalk.green('Target Information:'));
+        console.log(chalk.green(`IP: ${targetInfo.ip}`));
+        console.log(chalk.green(`Hostname: ${targetInfo.hostname}`));
+        console.log(chalk.green(`City: ${targetInfo.city}`));
+        console.log(chalk.green(`Region: ${targetInfo.region}`));
+        console.log(chalk.green(`Country: ${targetInfo.country}`));
+        console.log(chalk.green(`Org: ${targetInfo.org}`));
+        console.log(chalk.green(`AS: ${targetInfo.as}`));
+    }
+
+    // Mengakses target dan menangani captcha
+    const cookies = await bypassCaptcha(targetUrl);
+    if (cookies) {
+        console.log(chalk.green('Successfully bypassed captcha and accessed the target.'));
+    } else {
+        console.log(chalk.red('Failed to bypass captcha.'));
+    }
+}
+
 main();
